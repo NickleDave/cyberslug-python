@@ -1,0 +1,17 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "cyberslug"
+authors = [
+    {name = "David Nicholson", email = "nickledave@users.noreply.github.com"}
+]
+description = "Python implementation of Cyberslug (Brown et al. 2018)"
+version = "0.1"
+license = {file = "LICENSE"}
+classifiers = ["License :: OSI Approved :: MIT License"]
+
+
+[project.urls]
+Home = "https://github.com/NickleDave/cyberslug"

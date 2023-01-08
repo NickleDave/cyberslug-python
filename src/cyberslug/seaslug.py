@@ -35,6 +35,47 @@ class AntennaePositions:
     left: AntennaPosition
     right: AntennaPosition
 
+ODORS = [
+    'betaine',
+    'flab',
+    'hermi',
+]
+
+DIRECTIONS = [
+    'left',
+    'right',
+]
+
+
+@dataclass
+class Sensors:
+    """Odors of interest smelled by the Cyberslug"""
+    betaine_left: float = 0.
+    betaine_right: float = 0.
+    flab_left: float = 0.
+    flab_right: float = 0.
+    hermi_left: float = 0.
+    hermi_right: float = 0.
+
+    @staticmethod
+    def average_odor_strength(self, odor: str):
+        left = getattr(self, f'{odor}_left')
+        right = getattr(self, f'{odor}_right')
+        return (left + right) / 2
+
+    @property
+    def betaine(self):
+        return self.average_odor_strength('betaine')
+
+    @property
+    def flab(self):
+        return self.average_odor_strength('flab')
+
+    @property
+    def hermi(self):
+        return self.average_odor_strength('hermi')
+
+
 
 @dataclass
 class InternalState:
@@ -53,8 +94,8 @@ class InternalState:
 
     """
     nutrition: float = 0.5
-    incentive_salience: int = 0
-    somatic_map: int = 0.
+    incentive_salience: float = 0.
+    somatic_map: float = 0.
     satiation: float = 0.5
     appetite_switch: int = 0.
 
@@ -70,42 +111,55 @@ class InternalState:
 
 
 class SeaSlug:
-    def __init__(self, position: Position = Position()):
+    def __init__(self,
+                 world,
+                 position: Position = Position(),
+                 ):
+        self.world  # reference to world, to get odors
         self.position = position
-        self.travel_history = []
-        self.feedcount = {}
-        self.sensors = {}
-        self.proboscis_extension = 0
+        self.sns = Sensors()
         self.state = InternalState()
 
-    @property
-    def antennae_positions(self):
-        """Antennae are about 40 degrees from the body's lateral axis;
-        about 7 units out. 40 degress is about .7 radians.
-        """
-        left = AntennaPosition(
-            x=self.position.x + 7 * math.cos(self.position.angle - .7),
-            y=self.position.x + 7 * math.cos(self.position.angle - .7),
-        )
-        right = AntennaPosition(
-            x=self.position.x + 7 * math.cos(self.position.angle + .7),
-            y=self.position.x + 7 * math.cos(self.position.angle + .7),
-        )
+    def update_sensors(self):
+        """Update sensory variables based on odors detected by antennae"""
+        for odor in ODORS:
+            for direction in DIRECTIONS:
+                odor_val = self.world.odor(self.antennae.position)
+                if odor_val > 1e-7:
+                    sns_val = 7 + math.log10(odor_val)
+                else:
+                    sns_val = 0
+                smell = getattr(self.sns, odor)
+                setattr(self.sns, f'{smell}_{direction}', sns_val)
 
-    def update_internal_state(self, n_ticks: int = 1):
+    def somatic_map(self):
+        """Transform sensory input into a virtual place code
+        of the estimated direction of the strongest odor."""
+        F = self.sns.flab - self.sns.hermi
+        H = self.sns.hermi - self.sns.flab
+        out = (
+            # TODO: next line, why negative sign in netlogo code? Don't see in paper
+            - (self.sns.flab_left - self.sns.flab_right) / (1 + math.exp(-50. * F)) +
+            (self.sns.hermi_left - self.sns.hermi_right) / (1 + math.exp(-50. * H))
+        )
+        return out
+
+    def update_internal_state(self):
         """Update internal state.
 
         This method implements the core model from et al. 2018.
-
-        Parameters
-        ----------
-        n_ticks : int
-            The number of time steps to advance the model.
-            Default is 1.
         """
-        # TODO: look at netlogo code here, might be easier to translate?
-        # I don't quite follow what's going on with javascript function stuff
-        self.state.nutrition *= 0.9995 ** n_ticks
-        self.state.satiation = 1 / (1 + 0.7 * math.exp(-4  * self.state.nutrition + 2)) ** 2
 
-        self.state.odor_means = {}
+        # Nutritional state declines with time
+        self.state.nutrition = self.state.nutrition - 0.0005 * self.state.nutrition
+        self.state.satiation = 1 / (1 + 0.7 * math.exp(-4  * self.state.nutrition + 2) ** 2)
+
+
+
+    def step(self):
+        self.update_sensors()
+        # self.update_proboscis()  # I think this just draws proboscis
+        # not sure if below is "set up" or something we do on every time step?
+        # self.set_speed(0.06)
+        # self.set_turan_angle()
+        self.detect_prey()
